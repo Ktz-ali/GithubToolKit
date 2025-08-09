@@ -558,38 +558,70 @@ push_changes() {
     press_enter_to_continue
 }
 
+
 # ====== 拉取远程更改 ======
 pull_changes() {
     # 检查当前目录是否是Git仓库
     if [ ! -d ".git" ]; then
         echo -e "${RED}❌ 当前目录不是Git仓库${NC}"
+        press_enter_to_continue
         return 1
     fi
     
     # 检查是否有远程仓库
     if ! git remote | grep -q origin; then
         echo -e "${RED}❌ 没有配置远程仓库，请先创建并同步新仓库${NC}"
+        press_enter_to_continue
         return 1
     fi
     
-    echo -e "${BLUE}🔄 拉取远程更改...${NC}"
+    echo -e "${BLUE}🔄 正在检查远程更新...${NC}"
     
-    # 获取当前远程URL并添加认证信息
+    # 获取当前远程URL
     current_url=$(git config --get remote.origin.url)
-    repo_path=${current_url#https://}
-    AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@$repo_path"
-    run_command "git remote set-url origin \"$AUTH_REPO_URL\"" || return 1
     
-    if run_command "git pull"; then
-        echo -e "${GREEN}✅ 拉取完成${NC}"
-        return 0
+    # 正确解析仓库路径
+    if [[ $current_url == https://* ]]; then
+        repo_path=${current_url#https://}
+        clean_path=${repo_path#*@}
+        AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@$clean_path"
+    elif [[ $current_url == git@* ]]; then
+        repo_domain=$(echo "$current_url" | sed 's/git@//; s/:/\//; s/\.git$//')
+        repo_name=$(basename "$repo_domain")
+        repo_owner=$(dirname "$repo_domain")
+        AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@github.com/$repo_owner/$repo_name.git"
     else
-        echo -e "${RED}❌ 拉取失败${NC}"
+        echo -e "${RED}❌ 不支持的远程仓库URL格式${NC}"
+        press_enter_to_continue
         return 1
     fi
+    
+    # 设置带认证的远程URL
+    if ! git remote set-url origin "$AUTH_REPO_URL" > /dev/null 2>&1; then
+        echo -e "${RED}❌ 设置远程仓库URL失败${NC}"
+        press_enter_to_continue
+        return 1
+    fi
+    
+    # 执行拉取操作并简化输出
+    if git pull --quiet > /dev/null 2>&1; then
+        # 检查是否有更新
+        if git status | grep -q "Your branch is up to date"; then
+            echo -e "${GREEN}✅ 已是最新版本，没有可更新的内容${NC}"
+        else
+            echo -e "${GREEN}✅ 更新成功，已同步最新更改${NC}"
+        fi
+        # 恢复原始URL
+        git remote set-url origin "$current_url" > /dev/null 2>&1
+    else
+        echo -e "${RED}❌ 更新失败，请检查网络连接或仓库权限${NC}"
+        # 恢复原始URL
+        git remote set-url origin "$current_url" > /dev/null 2>&1
+    fi
+    
     press_enter_to_continue
+    return 0
 }
-
 
 # ====== URL编码函数 ======
 urlencode() {
