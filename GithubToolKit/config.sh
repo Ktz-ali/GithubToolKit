@@ -63,6 +63,98 @@ PURPLE='\033[0;35m'
 NC='\033[0m' # 无颜色
 
 
+check_dependencies() {
+    local missing=0
+    local os_type=$(grep -E '^ID=' /etc/os-release | cut -d= -f2 | tr -d '"')
+    
+    # 检查并安装git
+    if ! command -v git &>/dev/null; then
+        echo -e "${RED}错误: Git未安装${NC}"
+        case $os_type in
+            ubuntu|debian)
+                sudo apt-get install -y git
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y git
+                ;;
+            *)
+                echo -e "${RED}无法自动安装Git，请手动安装${NC}"
+                missing=1
+                ;;
+        esac
+    fi
+    
+    # 检查并安装curl
+    if ! command -v curl &>/dev/null; then
+        echo -e "${RED}错误: curl未安装${NC}"
+        case $os_type in
+            ubuntu|debian)
+                sudo apt-get install -y curl
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y curl
+                ;;
+            *)
+                echo -e "${RED}无法自动安装curl，请手动安装${NC}"
+                missing=1
+                ;;
+        esac
+    fi
+    
+    # 检查并安装jq
+    if ! command -v jq &>/dev/null; then
+        echo -e "${RED}错误: jq未安装${NC}"
+        case $os_type in
+            ubuntu|debian)
+                sudo apt-get install -y jq
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y jq
+                ;;
+            *)
+                echo -e "${RED}无法自动安装jq，请手动安装${NC}"
+                missing=1
+                ;;
+        esac
+    fi
+    
+    # 检查并安装iconv
+    if ! command -v iconv &>/dev/null; then
+        echo -e "${RED}错误: iconv未安装${NC}"
+        case $os_type in
+            ubuntu|debian)
+                sudo apt-get install -y libc-bin
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y glibc-common
+                ;;
+            *)
+                echo -e "${RED}无法自动安装iconv，请手动安装${NC}"
+                missing=1
+                ;;
+        esac
+    fi
+    
+    # 检查并安装xxd
+    if ! command -v xxd &>/dev/null; then
+        echo -e "${RED}错误: xxd未安装${NC}"
+        case $os_type in
+            ubuntu|debian)
+                sudo apt-get install -y vim-common
+                ;;
+            centos|rhel|fedora)
+                sudo yum install -y vim-common
+                ;;
+            *)
+                echo -e "${RED}无法自动安装xxd，请手动安装${NC}"
+                missing=1
+                ;;
+        esac
+    fi
+    
+    [ $missing -eq 1 ] && exit 1
+}
+
 # 等待用户按回车键继续
 press_enter_to_continue() {
     echo -e "${BLUE}--------------------------------${NC}"
