@@ -8,9 +8,7 @@
 
 ------------------------------
 
-> **注意**：本工具箱需要GitHub访问令牌，请确保令牌具有以下权限：repo, admin:org, gist, delete_repo
-
-点击创建Github令牌[创建令牌](https://github.com/settings/tokens)
+> **注意**：本工具箱需要GitHub访问令牌，请确保令牌具有以下权限：repo, admin:org, gist, delete_repo[点击创建令牌](https://github.com/settings/tokens)
 
 ## 目录结构
 ```bash
