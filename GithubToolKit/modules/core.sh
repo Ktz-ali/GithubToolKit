@@ -512,50 +512,93 @@ sync_to_existing_repo() {
 }
 
 
-
-# ====== 推送新更改 ======
+# ====== 推送本地更改到GitHub仓库 ======
 push_changes() {
     # 检查当前目录是否是Git仓库
     if [ ! -d ".git" ]; then
         echo -e "${RED}❌ 当前目录不是Git仓库${NC}"
+        press_enter_to_continue
         return 1
     fi
     
-    # 检查是否有远程仓库
-    if ! git remote | grep -q origin; then
-        echo -e "${RED}❌ 没有配置远程仓库，请先创建并同步新仓库${NC}"
-        return 1
-    fi
-    
-    if check_git_status; then
-        read -p "📝 输入提交信息: " commit_message
-        if [ -z "$commit_message" ]; then
-            echo -e "${RED}❌ 提交信息不能为空${NC}"
-            return 1
-        fi
-        
-        run_command "git add ." || return 1
-        run_command "git commit -m \"$commit_message\"" || return 1
-        
-        # 获取当前远程URL并添加认证信息
-        current_url=$(git config --get remote.origin.url)
-        repo_path=${current_url#https://}
-        AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@$repo_path"
-        run_command "git remote set-url origin \"$AUTH_REPO_URL\"" || return 1
-        
-        echo -e "${BLUE}🚀 正在推送更改...${NC}"
-        if run_command "git push"; then
-            echo -e "${GREEN}✅ 更改已推送${NC}"
-            return 0
-        else
-            echo -e "${RED}❌ 推送失败${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}✅ 没有检测到更改${NC}"
+    # 检查是否有未提交的更改
+    if ! check_git_status; then
+        echo -e "${GREEN}✅ 没有检测到未提交的更改${NC}"
+        press_enter_to_continue
         return 0
     fi
-    press_enter_to_continue
+    
+    echo -e "${BLUE}📝 检测到未提交的更改:${NC}"
+    git status -s
+    
+    read -p "🔄 是否提交这些更改? (Y/n): " commit_choice
+    commit_choice=${commit_choice:-Y}
+    
+    if [[ ! "$commit_choice" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}❌ 取消提交操作${NC}"
+        press_enter_to_continue
+        return 1
+    fi
+    
+    read -p "📝 输入提交信息: " commit_message
+    if [ -z "$commit_message" ]; then
+        commit_message="自动提交更新"
+    fi
+    
+    echo -e "${BLUE}🔄 正在提交更改...${NC}"
+    run_command "git add ." || return 1
+    run_command "git commit -m \"$commit_message\"" || return 1
+    
+    # 获取当前远程URL
+    current_url=$(git config --get remote.origin.url)
+    
+    # 正确解析仓库路径
+    if [[ $current_url == https://* ]]; then
+        repo_path=${current_url#https://}
+        clean_path=${repo_path#*@}
+        AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@$clean_path"
+    elif [[ $current_url == git@* ]]; then
+        repo_domain=$(echo "$current_url" | sed 's/git@//; s/:/\//; s/\.git$//')
+        repo_name=$(basename "$repo_domain")
+        repo_owner=$(dirname "$repo_domain")
+        AUTH_REPO_URL="https://$GITHUB_USER:$GITHUB_TOKEN@github.com/$repo_owner/$repo_name.git"
+    else
+        echo -e "${RED}❌ 不支持的远程仓库URL格式${NC}"
+        press_enter_to_continue
+        return 1
+    fi
+    
+    # 设置带认证的远程URL
+    if ! git remote set-url origin "$AUTH_REPO_URL" > /dev/null 2>&1; then
+        echo -e "${RED}❌ 设置远程仓库URL失败${NC}"
+        press_enter_to_continue
+        return 1
+    fi
+    
+    # 获取当前分支（兼容旧版Git）
+    current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null)
+    if [ -z "$current_branch" ]; then
+        echo -e "${RED}❌ 无法确定当前分支${NC}"
+        return 1
+    fi
+    
+    echo -e "${BLUE}🚀 正在推送更改到GitHub...${NC}"
+    if run_command "git push origin $current_branch"; then
+        echo -e "${GREEN}✅ 代码推送成功${NC}"
+        # 恢复原始URL
+        git remote set-url origin "$current_url" > /dev/null 2>&1
+        # 审计日志
+        repo_name=$(basename -s .git "$(git config --get remote.origin.url)")
+        audit_log "PUSH_CHANGES" "$repo_name"
+        press_enter_to_continue
+        return 0
+    else
+        echo -e "${RED}❌ 推送失败${NC}"
+        # 恢复原始URL
+        git remote set-url origin "$current_url" > /dev/null 2>&1
+        press_enter_to_continue
+        return 1
+    fi
 }
 
 
@@ -622,6 +665,8 @@ pull_changes() {
     press_enter_to_continue
     return 0
 }
+
+
 
 # ====== URL编码函数 ======
 urlencode() {
